@@ -14,3 +14,7 @@ Commit all local changes:
 
 $ git commit -m "a useful comment"
 
+Push the changes to the central server
+
+$ git push origin master
+
