@@ -1,0 +1,16 @@
+Some basic commands.
+
+This is quite a good site for basics: http://rogerdudler.github.io/git-guide/
+
+Add a new file:
+
+$ git add <filename>
+
+View the status of your local repo:
+
+$ git status
+
+Commit all local changes:
+
+$ git commit -m "a useful comment"
+
