@@ -7,6 +7,11 @@ $ git clone https://github.com/predictscan3/scan3.git
 
 This will create a "scan3" folder.
 
+Set up git so that you can commit to the main repo, edit the email address to be the same one as your github account:
+
+$ git config --global --edit
+
+
 To make it easy to find the data files, create a softlink.  Do this from the same folder that you ran the git command from.
 
 For me this looks like:
