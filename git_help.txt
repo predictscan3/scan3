@@ -12,7 +12,7 @@ $ git status
 
 Commit all local changes:
 
-$ git commit -m "a useful comment"
+$ git commit -m "a useful comment" <files>
 
 Push the changes to the main server:
 
