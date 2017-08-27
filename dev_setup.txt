@@ -1,0 +1,19 @@
+
+In a terminal:
+
+To to the folder above where you want to keep the code, then:
+
+$ git clone https://github.com/predictscan3/scan3.git
+
+This will create a "scan3" folder.
+
+To make it easy to find the data files, create a softlink.  Do this from the same folder that you ran the git command from.
+
+For me this looks like:
+
+$ ln -s /Users/luke/Dropbox/Citi\ and\ SGUL_shared\ folder data 
+
+Then run the dev env test script
+
+$ cd scan3
+$ python test_dev_setup.py
