@@ -14,7 +14,11 @@ Commit all local changes:
 
 $ git commit -m "a useful comment"
 
-Push the changes to the central server
+Push the changes to the main server:
 
 $ git push origin master
 
+To update your local folder with the main server:
+
+$ git pull
+ 
