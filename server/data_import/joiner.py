@@ -20,11 +20,11 @@ def join_center_scans(dfs_by_scan=None):
 
     # Need a lookup of scan date to baby id, so we can work out way back to the baby id from a parent and scan date
     # Might need to do this within the parent grouping, need multiple levels anyway
-    baby_by_scan = dict()
-    for scan_date, data in scan.groupby("baby_id"):
-        if len(data) > 1:
-            raise Exception("Found {0} babies for scan {1}".format(len(data), scan_date))
-        baby_by_scan[data.date_of_exam[0]] = baby
+    # baby_by_scan = dict()
+    # for scan_date, data in scan.groupby("baby_id"):
+    #     if len(data) > 1:
+    #         raise Exception("Found {0} babies for scan {1}".format(len(data), scan_date))
+    #     baby_by_scan[data.date_of_exam[0]] = baby
 
     # Get a lookup of scan dates by mother, so we can cope with the subsequent scans where a mother has multiple babies
     scan_by_parent = defaultdict(list)
