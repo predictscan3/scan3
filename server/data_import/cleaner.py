@@ -4,9 +4,137 @@ from os.path import join, exists, splitext
 from os import makedirs
 import cPickle as pickle
 import json
+from collections import OrderedDict
+from re import sub
+
+from scan3.server.data_import.joiner import join_center_scans
 
 
-def generate_field_map_template(df=None):
+PARENT_FIELDS = [
+    "patients_id",
+    "dob",
+    "ethnic_group2",
+    "ethnic_group",
+    "date_of_exam",
+    "maternal_age_at_exam",
+    "episode_lmp",
+    "conception",
+    "weight_kg",
+    "height_cm",
+    "cigarettes",
+    "alcohol",
+    "para",
+    "iud_lt_15w",
+    "iud_16_23w",
+    "iud_24_36w",
+    "iud_gte_37w",
+    "crl_1",
+    "nt1",
+    "bpd3",
+    "us_gestation_weeks1",
+    "days1",
+    "1st_trim_msb_date",
+    "msb_manufacturer",
+    "b_hcg",
+    "_bhcg_MoM",
+    "pappa",
+    "pappa_MoM",
+    "msb_plgf_pgml",
+    "msb_plgf_MoM",
+    "r_uterine_a_pi",
+    "r_uterine_a_ri",
+    "l_uterine_a_pi",
+    "l_uterine_a_ri"
+]
+
+BABY_FIELDS = [
+    "patients_id",
+    "dob",
+    "ethnic_group2",
+    "ethnic_group",
+    "date_of_exam",
+    "maternal_age_at_exam",
+    "episode_lmp",
+    "conception",
+    "edd_lmp",
+    "edd_us",
+    "weight_kg",
+    "height_cm",
+    "cigarettes",
+    "alcohol",
+    "para",
+    "iud_lt_15w",
+    "iud_16_23w",
+    "iud_24_36w",
+    "iud_gte_37w",
+    "crl_1",
+    "nt1",
+    "bpd3",
+    "us_gestation_weeks1",
+    "days1",
+    "1st_trim_msb_date",
+    "msb_manufacturer",
+    "b_hcg",
+    "_bhcg_MoM",
+    "pappa",
+    "pappa_MoM",
+    "msb_plgf_pgml",
+    "msb_plgf_MoM",
+    "r_uterine_a_pi",
+    "r_uterine_a_ri",
+    "l_uterine_a_pi",
+    "l_uterine_a_ri"
+]
+
+SCAN_FIELDS = [
+    "date_of_exam",
+    "maternal_age_at_exam",
+    "crl_1",
+    "nt1",
+    "bpd3",
+    "us_gestation_weeks1",
+    "days1",
+    "1st_trim_msb_date",
+    "msb_manufacturer",
+    "b_hcg",
+    "_bhcg_MoM",
+    "pappa",
+    "pappa_MoM",
+    "msb_plgf_pgml",
+    "msb_plgf_MoM",
+    "r_uterine_a_pi",
+    "r_uterine_a_ri",
+    "l_uterine_a_pi",
+    "l_uterine_a_ri"
+]
+
+OUTCOME_FIELDS = [
+
+]
+
+DROP_FIELDS = [
+    "gest1"
+]
+
+
+def convert_field_name(name):
+    tidy_name = name.lower()\
+                    .replace(" < ", "_lt_") \
+                    .replace(" >=", "_gte_") \
+                    .replace(")", "") \
+                    .replace("(", "") \
+                    .replace("msb:", "msb") \
+                    .replace(" ", "_") \
+                    .replace(":", "_") \
+                    .replace("-", "_") \
+                    .replace("/", "") \
+                    .replace(".", "_")
+    tidy_name = sub("^_", "", tidy_name)
+    tidy_name = sub("^1st", "first", tidy_name)
+    return tidy_name
+
+
+def generate_field_map_template(scan=None, df=None):
     """
     Creates a template field map, make sure not to overwrite ones that have been edited
     This makes it easier to convert different files into the same format with the same fields
@@ -14,15 +142,14 @@ def generate_field_map_template(df=None):
     :param df:
     :return:
     """
-    mapping = {}
-
-    for k in df.keys():
-        mapping[k] = dict(
-            target=k.lower().replace(" ", "_").replace("-", "_").replace(".", "_"),
-            table="parent",  # example
-            drop=False,
-            dtype=df[k].dtype.name
-        )
+    converted = sorted(map(convert_field_name, df.keys()))
+    mapping = dict(
+        baby=[],
+        parent=converted,
+        scan=[],
+        drop=[],
+        rename=[{"from": "a field", "to": "a new field"}]
+    )
 
     return mapping
 
@@ -37,6 +164,11 @@ def save_mapping_template(mapping=None, template_root=None, filename=None):
 
     with open(out_fname, "wb") as f:
         json.dump(mapping, f, indent=4)
+
+
+def tidy_field_names(df=None):
+    df.rename(columns=dict(zip(df.keys(), map(convert_field_name, df.keys()))), inplace=True)
+    return df
 
 
 def convert_file_type(center_root=None, filename=None):
@@ -82,17 +214,29 @@ if __name__ == "__main__":
     """
     Main function just here to make things easier when testing etc
     """
-    # files = dict(
-    #     Centre1=["PREST1_v2.xlsx"]
-    # )
+
     files = dict(
         Centre1=[("scan1", "PREST1_v2.xlsx", ),
                  ("scan2", "PREST2_v2.xlsx", ),
-                 ("scan3", "PREST3_v2.xlsx", )]
+                 ("scan3", "PREST3_v2.xlsx", )],
+        # Centre2=[("scan1", "PREST1_v2 Centre2.xlsx", ),
+        #          ("scan2", "PREST2_v2 Centre2.xlsx", ),
+        #          ("scan3", "PREST3_v2 Centre2.xlsx", )]
     )
 
+    # files = dict(
+    #     Centre1=[("scan1", "PREST1_v2.xlsx", )
+    #              #, ("scan2", "PREST2_v2.xlsx", ),
+    #              #, ("scan3", "PREST3_v2.xlsx", )
+    #     ]
+    # )
+
     for center, files in files.iteritems():
+        cfiles = OrderedDict()
         for scan, file in files:
             df = convert_file_type(center, file)
-            mapping = generate_field_map_template(df)
-            save_mapping_template(mapping, "field_templates", "{0}.{1}".format(center, file))
+            df = tidy_field_names(df)
+            cfiles[scan] = df
+            # mapping = generate_field_map_template(scan, df)
+            # save_mapping_template(mapping, "field_templates", "{0}.{1}".format(center, file))
+        join_center_scans(cfiles)
