@@ -14,11 +14,15 @@ $ git config --global --edit
 
 To make it easy to find the data files, create a softlink.  Do this from the same folder that you ran the git command from.
 
-For me this looks like:
+On my mac this looks like:
 
 $ ln -s /Users/luke/Dropbox/Citi\ and\ SGUL_shared\ folder data 
 
-Then run the dev env test script
+On my PC this looks like:
+
+$ C:\Users\QZ\PycharmProjects>MKLINK /J data "c:\Users\QZ\Dropbox\Citi and SGUL_shared folder"
+
+Then run the dev env test script:
 
 $ cd scan3
 $ python test_dev_setup.py
