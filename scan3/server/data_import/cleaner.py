@@ -1,8 +1,11 @@
 import pandas as pd
-import settings
+from scan3 import settings
 from os.path import join, exists, splitext
 from os import makedirs
-import cPickle as pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import json
 from collections import OrderedDict
 from re import sub
@@ -171,7 +174,7 @@ def tidy_field_names(df=None):
     return df
 
 
-def convert_file_type(center_root=None, filename=None):
+def convert_file_type(center_root=None, filename=None, force=False):
     """
     To get started, need to get a template for the normalised field names
     :param center_root:
@@ -184,26 +187,26 @@ def convert_file_type(center_root=None, filename=None):
     if not exists(orig_fname):
         raise Exception("File not found: {0}".format(orig_fname))
 
-    if exists(cache_fname):
-        print "Loading cached {0}".format(cache_fname)
+    if exists(cache_fname) and force is False:
+        print("Loading cached {0}".format(cache_fname))
         with open(cache_fname, "rb") as f:
             orig = pickle.load(f)
     else:
         orig = xlxs2dataframe(orig_fname, cache_fname)
 
-    print "Have {0} rows and {1} cols".format(len(orig), len(orig.keys()))
+    print("Have {0} rows and {1} cols".format(len(orig), len(orig.keys())))
 
     return orig
 
 
 def xlxs2dataframe(orig_fname=None, cache_fname=None):
-    print "Loading {0}".format(orig_fname)
+    print("Loading {0}".format(orig_fname))
 
     orig = pd.read_excel(orig_fname)
 
-    print "Found {0} lines".format(len(orig))
+    print("Found {0} lines".format(len(orig)))
 
-    print "Saving to {0}".format(cache_fname)
+    print("Saving to {0}".format(cache_fname))
     with open(cache_fname, "wb") as f:
         pickle.dump(orig, f)
 
@@ -231,10 +234,12 @@ if __name__ == "__main__":
     #     ]
     # )
 
-    for center, files in files.iteritems():
+    force = False
+
+    for center, files in iter(files.items()):
         cfiles = OrderedDict()
         for scan, file in files:
-            df = convert_file_type(center, file)
+            df = convert_file_type(center, file, force=force)
             df = tidy_field_names(df)
             cfiles[scan] = df
             # mapping = generate_field_map_template(scan, df)
