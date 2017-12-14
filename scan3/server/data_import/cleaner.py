@@ -131,7 +131,8 @@ def convert_field_name(name):
                     .replace(":", "_") \
                     .replace("-", "_") \
                     .replace("/", "") \
-                    .replace(".", "_")
+                    .replace(".", "_") \
+                    .replace("mat_age_at_exam", "maternal_age_at_exam")
     tidy_name = sub("^_", "", tidy_name)
     tidy_name = sub("^1st", "first", tidy_name)
     return tidy_name
@@ -213,6 +214,30 @@ def xlxs2dataframe(orig_fname=None, cache_fname=None):
     return orig
 
 
+def inspect_scan_fields(cfiles=None):
+    """
+    Useful for figuring out where common fields are and spotting duplicates
+    :param cfiles:
+    :return:
+    """
+    # TODO Do some more work here, there are some scan fields in 2 and 3 but not one, need to ask Basky
+    scan1_cols = set(cfiles["scan1"].columns)
+    scan2_cols = set(cfiles["scan2"].columns)
+    scan3_cols = set(cfiles["scan3"].columns)
+
+    print("Scan 1+2+3 intersect == scan fields")
+    print("SCAN_FIELDS = " + str(sorted(list(scan1_cols.intersection(scan2_cols).intersection(scan3_cols)))))
+
+    print("Scan 1-2-3 == parent info")
+    print("PARENT_FIELDS = " + str(sorted(list(scan1_cols - scan2_cols - scan3_cols))))
+
+    print("Scan 3-2-1 == outcome info")
+    print("OUTCOME_FIELDS = " + str(sorted(list(scan3_cols - scan2_cols - scan1_cols))))
+
+    print("Scan 2-1-3 == extra scan2 fields")
+    print(scan2_cols - scan1_cols - scan3_cols)
+
+
 if __name__ == "__main__":
     """
     Main function just here to make things easier when testing etc
@@ -222,9 +247,9 @@ if __name__ == "__main__":
         Centre1=[("scan1", "PREST1_v2.xlsx", ),
                  ("scan2", "PREST2_v2.xlsx", ),
                  ("scan3", "PREST3_v2.xlsx", )],
-        # Centre2=[("scan1", "PREST1_v2 Centre2.xlsx", ),
-        #          ("scan2", "PREST2_v2 Centre2.xlsx", ),
-        #          ("scan3", "PREST3_v2 Centre2.xlsx", )]
+        Centre2=[("scan1", "PREST1_v2 Centre2.xlsx", ),
+                 ("scan2", "PREST2_v2 Centre2.xlsx", ),
+                 ("scan3", "PREST3_v2 Centre2.xlsx", )]
     )
 
     # files = dict(
@@ -235,6 +260,11 @@ if __name__ == "__main__":
     # )
 
     force = False
+    outroot = join(settings.DATA_ROOT, "data_staging")
+    if not exists(outroot):
+        makedirs(outroot)
+
+    center_dfs = []
 
     for center, files in iter(files.items()):
         cfiles = OrderedDict()
@@ -244,4 +274,19 @@ if __name__ == "__main__":
             cfiles[scan] = df
             # mapping = generate_field_map_template(scan, df)
             # save_mapping_template(mapping, "field_templates", "{0}.{1}".format(center, file))
-        join_center_scans(cfiles)
+
+        center_df = join_center_scans(cfiles)
+        center_dfs.append(center_df)
+
+        fname = join(outroot, "{0}_by_scan.p".format(center))
+        print("Writing {0} rows for {1} to {2}".format(len(center_df), center, fname))
+
+        with open(fname, "wb") as f:
+            pickle.dump(center_df, f)
+
+    # Concatenate everything and save
+    final = pd.concat(center_dfs)
+    fname = join(outroot, "all.p")
+    with open(fname, "wb") as f:
+        pickle.dump(fname, final)
+
