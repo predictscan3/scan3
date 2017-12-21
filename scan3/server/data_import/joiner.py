@@ -5,10 +5,11 @@ import numpy as np
 from scan3 import settings
 
 
-def join_center_scans(dfs_by_scan=None):
+def join_center_scans(dfs_by_scan=None, sources=None):
     """
     Given the raw data by scan for a single center, join them together keyed on baby_id (which will be generated)
     :param dfs_by_scan:
+    :param sources:
     :return:
     """
     missing_patient_info = {}
@@ -145,6 +146,7 @@ def join_center_scans(dfs_by_scan=None):
         # Identify rows without any scan data
         pure_scan_fields = list(set(settings.SCAN_FIELDS) - {"date_of_exam"})
         df["missing_scan_fields"] = 0
+
         for f in pure_scan_fields:
             df["missing_scan_fields"] += df[f].map(lambda x: 1 if x is None or np.isnan(x) else 0)
 
@@ -166,7 +168,6 @@ def join_center_scans(dfs_by_scan=None):
 
     def reindex(df=None):
         df_new = df.set_index(df.idx, verify_integrity=True)
-
         return df_new
 
     scan1_fields = settings.PARENT_FIELDS + ["baby_id"]
@@ -192,12 +193,28 @@ def join_center_scans(dfs_by_scan=None):
     scan3_minimal.set_index(scan3_minimal.baby_id, inplace=True)
 
     # Update scan 2 and 3 with the parent data from scan 1
-    scan2_supp = scan2_new[scan2_fields + ["idx"]].join(scan1_minimal[scan1_fields], on="baby_id", how="inner", lsuffix="_xs2", rsuffix="_xs1")
-    scan3_supp = scan3_new[scan3_fields + ["idx"]].join(scan1_minimal[scan1_fields], on="baby_id", how="inner", lsuffix="_xs3", rsuffix="_xs1")
+    scan2_supp = scan2_new[scan2_fields + ["idx"] + settings.DEBUG_FIELDS].join(scan1_minimal[scan1_fields],
+                                                                                on="baby_id",
+                                                                                how="inner",
+                                                                                lsuffix="_xs2",
+                                                                                rsuffix="_xs1")
+    scan3_supp = scan3_new[scan3_fields + ["idx"] + settings.DEBUG_FIELDS].join(scan1_minimal[scan1_fields],
+                                                                                on="baby_id",
+                                                                                how="inner",
+                                                                                lsuffix="_xs3",
+                                                                                rsuffix="_xs1")
 
     # Update scan 1 and 2 with the outcome data from scan 3
-    scan1_supp = scan1_new[scan1_fields + ["idx"]].join(scan3_minimal[scan3_fields], on="baby_id", how="inner", lsuffix="_xs1", rsuffix="_xs3")
-    scan2_supp = scan2_supp.join(scan3_minimal[scan3_fields], on="baby_id", how="inner", lsuffix="_xs2", rsuffix="_xs3")
+    scan1_supp = scan1_new[scan1_fields + ["idx"] + settings.DEBUG_FIELDS].join(scan3_minimal[scan3_fields],
+                                                                                on="baby_id",
+                                                                                how="inner",
+                                                                                lsuffix="_xs1",
+                                                                                rsuffix="_xs3")
+    scan2_supp = scan2_supp.join(scan3_minimal[scan3_fields],
+                                 on="baby_id",
+                                 how="inner",
+                                 lsuffix="_xs2",
+                                 rsuffix="_xs3")
 
     print("Scan1 final size: {0}".format(len(scan1_supp)))
     print("Scan2 final size: {0}".format(len(scan2_supp)))

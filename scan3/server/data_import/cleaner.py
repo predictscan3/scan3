@@ -13,113 +13,6 @@ from re import sub
 from scan3.server.data_import.joiner import join_center_scans
 
 
-PARENT_FIELDS = [
-    "patients_id",
-    "dob",
-    "ethnic_group2",
-    "ethnic_group",
-    "date_of_exam",
-    "maternal_age_at_exam",
-    "episode_lmp",
-    "conception",
-    "weight_kg",
-    "height_cm",
-    "cigarettes",
-    "alcohol",
-    "para",
-    "iud_lt_15w",
-    "iud_16_23w",
-    "iud_24_36w",
-    "iud_gte_37w",
-    "crl_1",
-    "nt1",
-    "bpd3",
-    "us_gestation_weeks1",
-    "days1",
-    "1st_trim_msb_date",
-    "msb_manufacturer",
-    "b_hcg",
-    "_bhcg_MoM",
-    "pappa",
-    "pappa_MoM",
-    "msb_plgf_pgml",
-    "msb_plgf_MoM",
-    "r_uterine_a_pi",
-    "r_uterine_a_ri",
-    "l_uterine_a_pi",
-    "l_uterine_a_ri"
-]
-
-BABY_FIELDS = [
-    "patients_id",
-    "dob",
-    "ethnic_group2",
-    "ethnic_group",
-    "date_of_exam",
-    "maternal_age_at_exam",
-    "episode_lmp",
-    "conception",
-    "edd_lmp",
-    "edd_us",
-    "weight_kg",
-    "height_cm",
-    "cigarettes",
-    "alcohol",
-    "para",
-    "iud_lt_15w",
-    "iud_16_23w",
-    "iud_24_36w",
-    "iud_gte_37w",
-    "crl_1",
-    "nt1",
-    "bpd3",
-    "us_gestation_weeks1",
-    "days1",
-    "1st_trim_msb_date",
-    "msb_manufacturer",
-    "b_hcg",
-    "_bhcg_MoM",
-    "pappa",
-    "pappa_MoM",
-    "msb_plgf_pgml",
-    "msb_plgf_MoM",
-    "r_uterine_a_pi",
-    "r_uterine_a_ri",
-    "l_uterine_a_pi",
-    "l_uterine_a_ri"
-]
-
-SCAN_FIELDS = [
-    "date_of_exam",
-    "maternal_age_at_exam",
-    "crl_1",
-    "nt1",
-    "bpd3",
-    "us_gestation_weeks1",
-    "days1",
-    "1st_trim_msb_date",
-    "msb_manufacturer",
-    "b_hcg",
-    "_bhcg_MoM",
-    "pappa",
-    "pappa_MoM",
-    "msb_plgf_pgml",
-    "msb_plgf_MoM",
-    "r_uterine_a_pi",
-    "r_uterine_a_ri",
-    "l_uterine_a_pi",
-    "l_uterine_a_ri"
-]
-
-OUTCOME_FIELDS = [
-
-]
-
-DROP_FIELDS = [
-    "gest1"
-]
-
-
 def convert_field_name(name):
     tidy_name = name.lower()\
                     .replace(" < ", "_lt_") \
@@ -132,7 +25,8 @@ def convert_field_name(name):
                     .replace("-", "_") \
                     .replace("/", "") \
                     .replace(".", "_") \
-                    .replace("mat_age_at_exam", "maternal_age_at_exam")
+                    .replace("mat_age_at_exam", "maternal_age_at_exam") \
+                    .replace("patient_id", "patients_id")
     tidy_name = sub("^_", "", tidy_name)
     tidy_name = sub("^1st", "first", tidy_name)
     return tidy_name
@@ -194,6 +88,10 @@ def convert_file_type(center_root=None, filename=None, force=False):
             orig = pickle.load(f)
     else:
         orig = xlxs2dataframe(orig_fname, cache_fname)
+
+    # Store some debug info
+    orig["center"] = center_root
+    orig["filename"] = filename
 
     print("Have {0} rows and {1} cols".format(len(orig), len(orig.keys())))
 
@@ -264,29 +162,53 @@ if __name__ == "__main__":
     if not exists(outroot):
         makedirs(outroot)
 
-    center_dfs = []
-
+    # Load all files and tidy up the field names
+    tidy_files = OrderedDict()
     for center, files in iter(files.items()):
         cfiles = OrderedDict()
         for scan, file in files:
             df = convert_file_type(center, file, force=force)
             df = tidy_field_names(df)
             cfiles[scan] = df
-            # mapping = generate_field_map_template(scan, df)
-            # save_mapping_template(mapping, "field_templates", "{0}.{1}".format(center, file))
+        tidy_files[center] = cfiles
 
-        center_df = join_center_scans(cfiles)
+    # Check whether we have any important fields missing, at the moment center1 is our default
+    base_center = "Centre1"
+    base = tidy_files[base_center]
+    for center in (set(tidy_files.keys()) - set(base_center)):
+        cfiles = tidy_files[center]
+        for scan, df in iter(cfiles.items()):
+            missing = set(base[scan].keys()) - set(df.keys())
+            extra = set(df.keys()) - set(base[scan].keys())
+            print("Extra in {0}, {1}:".format(center, scan))
+            print("\n".join(sorted(extra)))
+            print()
+            print("Missing from {0}, {1}:".format(center, scan))
+            print("\n".join(sorted(missing)))
+            print()
+    # Join the center files into one, indexed on scan_id (composite of baby_id and scan_date)
+    center_dfs = []
+    for center, cfiles in iter(tidy_files.items()):
+        center_df = join_center_scans(cfiles, files)
         center_dfs.append(center_df)
 
         fname = join(outroot, "{0}_by_scan.p".format(center))
-        print("Writing {0} rows for {1} to {2}".format(len(center_df), center, fname))
+        fname_csv = join(outroot, "{0}_by_scan.csv".format(center))
 
+        print("Writing {0} rows for {1} to {2}".format(len(center_df), center, fname))
         with open(fname, "wb") as f:
             pickle.dump(center_df, f)
 
-    # Concatenate everything and save
+        center_df.to_csv(fname_csv)
+
+    # Concatenate everything into one big file and save
     final = pd.concat(center_dfs)
     fname = join(outroot, "all.p")
+    fname_csv = join(outroot, "all.csv")
+
+    print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(files.keys()), fname))
     with open(fname, "wb") as f:
         pickle.dump(fname, final)
+
+    final.to_csv(fname_csv)
 
