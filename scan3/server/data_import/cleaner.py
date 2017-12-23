@@ -10,7 +10,8 @@ import json
 from collections import OrderedDict
 from re import sub
 
-from scan3.server.data_import.joiner import join_center_scans
+# from scan3.server.data_import.joiner import join_center_scans
+from scan3.server.data_import.joiner_by_baby import join_center_scans
 
 
 def convert_field_name(name):
@@ -29,6 +30,10 @@ def convert_field_name(name):
                     .replace("patient_id", "patients_id")
     tidy_name = sub("^_", "", tidy_name)
     tidy_name = sub("^1st", "first", tidy_name)
+
+    # Process any synonyms
+    tidy_name = settings.FIELD_SYNOMYMS.get(tidy_name, tidy_name)
+
     return tidy_name
 
 
@@ -66,6 +71,13 @@ def save_mapping_template(mapping=None, template_root=None, filename=None):
 
 def tidy_field_names(df=None):
     df.rename(columns=dict(zip(df.keys(), map(convert_field_name, df.keys()))), inplace=True)
+    return df
+
+
+def drop_cols(scan=None, df=None):
+    drops = list(set(settings.DROP_FIELDS_BY_SCAN[scan]).intersection(set(df.keys())))
+    print("Dropping fields from {0}: {1}".format(scan, ", ".join(drops)))
+    df.drop(axis=1, labels=drops, inplace=True)
     return df
 
 
@@ -164,36 +176,38 @@ if __name__ == "__main__":
 
     # Load all files and tidy up the field names
     tidy_files = OrderedDict()
-    for center, files in iter(files.items()):
+    for center, sfiles in iter(files.items()):
         cfiles = OrderedDict()
-        for scan, file in files:
+        for scan, file in sfiles:
             df = convert_file_type(center, file, force=force)
             df = tidy_field_names(df)
+            df = drop_cols(scan, df)
             cfiles[scan] = df
         tidy_files[center] = cfiles
 
     # Check whether we have any important fields missing, at the moment center1 is our default
-    base_center = "Centre1"
-    base = tidy_files[base_center]
-    for center in (set(tidy_files.keys()) - set(base_center)):
-        cfiles = tidy_files[center]
-        for scan, df in iter(cfiles.items()):
-            missing = set(base[scan].keys()) - set(df.keys())
-            extra = set(df.keys()) - set(base[scan].keys())
-            print("Extra in {0}, {1}:".format(center, scan))
-            print("\n".join(sorted(extra)))
-            print()
-            print("Missing from {0}, {1}:".format(center, scan))
-            print("\n".join(sorted(missing)))
-            print()
-    # Join the center files into one, indexed on scan_id (composite of baby_id and scan_date)
+    # base_center = "Centre1"
+    # base = tidy_files[base_center]
+    # for center in (set(tidy_files.keys()) - set(base_center)):
+    #     cfiles = tidy_files[center]
+    #     for scan, df in iter(cfiles.items()):
+    #         missing = set(base[scan].keys()) - set(df.keys())
+    #         extra = set(df.keys()) - set(base[scan].keys())
+    #         print("Extra in {0}, {1}:".format(center, scan))
+    #         print("\n".join(sorted(extra)))
+    #         print()
+    #         print("Missing from {0}, {1}:".format(center, scan))
+    #         print("\n".join(sorted(missing)))
+    #         print()
+
+    # Join the center files into one, indexed on baby_id (composite of parent_id and EDD)
     center_dfs = []
     for center, cfiles in iter(tidy_files.items()):
         center_df = join_center_scans(cfiles, files)
         center_dfs.append(center_df)
 
-        fname = join(outroot, "{0}_by_scan.p".format(center))
-        fname_csv = join(outroot, "{0}_by_scan.csv".format(center))
+        fname = join(outroot, "{0}_by_baby.p".format(center))
+        fname_csv = join(outroot, "{0}_by_baby.csv".format(center))
 
         print("Writing {0} rows for {1} to {2}".format(len(center_df), center, fname))
         with open(fname, "wb") as f:
@@ -203,12 +217,12 @@ if __name__ == "__main__":
 
     # Concatenate everything into one big file and save
     final = pd.concat(center_dfs)
-    fname = join(outroot, "all.p")
-    fname_csv = join(outroot, "all.csv")
+    fname = join(outroot, "all_by_baby.p")
+    fname_csv = join(outroot, "all_by_baby.csv")
 
     print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(files.keys()), fname))
     with open(fname, "wb") as f:
-        pickle.dump(fname, final)
+        pickle.dump(final, f)
 
     final.to_csv(fname_csv)
 

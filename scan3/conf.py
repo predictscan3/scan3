@@ -3,29 +3,101 @@ from environment import *
 TEST_NAME = "test name"
 TEST_PROJECT = "test project"
 
+PARENT_FIELDS = ['alcohol', 'cigarettes', 'conception',  'edd_lmp', 'edd_us', 'edd',
+                 'episode_lmp', 'ethnic_group', 'ethnic_group2', 'height_cm',
+                 'para', 'weight_kg', 'dob']
 
-# Scan 1+2+3 intersect == scan fields
-SCAN_FIELDS = ['date_of_exam', 'bpd3', 'l_uterine_a_pi', 'l_uterine_a_ri', 'r_uterine_a_pi', 'r_uterine_a_ri']
+# TODO: Need to update all this as we will have scan fields per file, and going to be taking the most recent one in each
+# TODO: case (mostly).
+# TODO: Also each scan file doesn't neccessarily have the same scan fields, so will need to list them separately here.
+# TODO: Means some of what I did is redundant, but the finding duplicates part isn't.
+# TODO: Add some calculated fields, especially gestational age, express in days?
 
-# Scan 1-2-3 == parent info
-PARENT_FIELDS = ['alcohol', 'b_hcg', 'bhcg_mom', 'cigarettes', 'conception', 'crl_1', 'edd_lmp', 'edd_us', 'episode_lmp', 'ethnic_group', 'ethnic_group2', 'first_trim_msb_date', 'height_cm', 'iud_16_23w', 'iud_24_36w', 'iud_gte_37w', 'iud_lt_15w', 'msb_manufacturer', 'msb_plgf_mom', 'msb_plgf_pgml', 'nt1', 'pappa', 'pappa_mom', 'para', 'weight_kg']
+COMMON_FIELDS = ['patients_id', 'date_of_exam']
 
-# Scan 3-2-1 == outcome info
-OUTCOME_FIELDS = ['admission_scbu', 'apgar_10min', 'apgar_5min', 'bw', 'chromosomes_baby', 'comments', 'cord_ph_artery', 'cord_ph_vein', 'delivery', 'discharged_on', 'fetus_mid_cerebral_a_pi', 'fetus_umbilical_a_pi', 'fh4', 'karyotype_baby', 'outcome', 'outcome_date', 'outcome_died_on', 'outcome_ga_days', 'outcome_ga_weeks', 'postnatal_diagnosis', 'sex_of_child']
+TRIM1_SCAN_FIELDS = ['date_of_exam',
+                     'msb_date', 'msb_manufacturer', 'msb_plgf_pgml',
+                     'bpd3',
+                     'l_uterine_a_pi', 'l_uterine_a_ri', 'r_uterine_a_pi', 'r_uterine_a_ri',
+                     'crl_1', 'nt1', 'b_hcg', 'pappa', ]
 
-DEBUG_FIELDS = ["center", "filename"]
+TRIM2_SCAN_FIELDS = ['date_of_exam',
+                     'ac3', 'hc3', 'fl3', 'cord',
+                     'l_uterine_a_pi', 'l_uterine_a_ri', 'r_uterine_a_pi', 'r_uterine_a_ri',
+                     ]
 
-DROP_FIELDS = ["id_sort", "case_no", 'us_gestation_weeks1']
+TRIM3_SCAN_FIELDS = ['date_of_exam',
+                     'ac3', 'hc3', 'fl3',
+                     'l_uterine_a_pi', 'l_uterine_a_ri', 'r_uterine_a_pi', 'r_uterine_a_ri',
+                     'fh4', 'fetus_mid_cerebral_a_pi', 'fetus_umbilical_a_pi',
+                     ]
+
+FIELDS_BY_SCAN_FILE = dict(
+    scan1=TRIM1_SCAN_FIELDS,
+    scan2=TRIM2_SCAN_FIELDS,
+    scan3=TRIM3_SCAN_FIELDS
+)
+
+OUTCOME_FIELDS = ['outcome', 'outcome_date', 'outcome_died_on']
+
+DEBUG_FIELDS = ["center", "filename", 'comments', 'scanfile_idx']
+
+# These have useful information but we're not using them at the moment
+MIGHT_NEED_FIELDS = ['iud_16_23w', 'iud_24_36w', 'iud_gte_37w', 'iud_lt_15w', 'bhcg_mom', 'pappa_mom',
+                     'msb_plgf_mom', ]
+
+# Some fields are only dropped from specific scan files
+SCAN2_DROP_FIELDS = ['bpd3', 'ofd3']
+SCAN3_DROP_FIELDS = ['bpd3', 'ofd3']
+
+# Adding this seperately to make it explicit where these fields are from
+CENTER2_DROP_FIELDS = ['race', 'race_2', 'smoking', 'us_gestation_wks', 'chronic_hypertension', 'diabetes',
+                       'diagnosis_details', 'diagnosis_scan', 'efw', 'efw_method', 'gravida', 'placenta',
+                       'medical_conditions', 'medications', 'nicu_comments', 'ocd', 'other_complications_outcome',
+                       'other_medical_historyixxx', 'p_v', 'pad_t', 'papp_a_mom', 'pre__weight', 'sle',
+                       'smoking', 'ua', '36_weight', 'apad_2', 'aps', 'height']
+
+DROP_FIELDS = ["id_sort", "case_no", 'us_gestation_weeks1', 'admission_scbu', 'apgar_10min', 'apgar_5min',
+               'outcome_ga_days', 'outcome_ga_weeks', 'postnatal_diagnosis', 'sex_of_child',
+               'bw', 'chromosomes_baby', 'cord_ph_artery', 'cord_ph_vein', 'delivery', 'discharged_on',
+               'karyotype_baby',
+               'ad1_wb2', 'ad2_wb2',
+               'days1', 'gestation_days',
+               'maternal_age_at_exam',
+               ] \
+              + MIGHT_NEED_FIELDS \
+              + CENTER2_DROP_FIELDS
+
+# Only rename/drop these at the final stage, they're used for various things during processing
+FINAL_DEBUG_FIELDS = ['patients_id', 'baby_id', 'center', 'comments', 'filename']
+FINAL_DROP_FIELDS = ['missing_scan_fields']
+
+DROP_FIELDS_BY_SCAN = dict(
+    scan1=DROP_FIELDS,
+    scan2=DROP_FIELDS + SCAN2_DROP_FIELDS,
+    scan3=DROP_FIELDS + SCAN3_DROP_FIELDS
+)
 
 FIELD_SYNONYMS_BY_BASE = dict(
     pappa_mom=["pappa_a_mom"],
     us_gestation_weeks1=["us_gestation_wks1"],
+    edd_lmp=['edd'],
+    edd_us=['edd_by_us'],
     bpd3=["bpd"],
     ac3=["ac"],
     date_of_exam=["scan_date"],
     outcome_died_on=["date_of_death"],
     outcome_date=["date_of_delivery"],
-    comments=["commentsgeneral_outcome"]
+    comments=["commentsgeneral_outcome"],
+    msb_date=['first_trim_msb_date'],
+    fl3=['fl', 'fl_3'],
+    hc3=['hc','hc_3'],
+    l_uterine_a_pi=['l__uterine_artery_pita'],
+    r_uterine_a_pi=['r__uterine_artery_pita'],
+    fetus_mid_cerebral_a_pi=['mca'],  # r_mca_pi # TODO Special case, need to collapse
+    fetus_mid_cerebral_a_pi2=['r_mca_pi'],
+    outcome_ga_days=['out_ga_d'],
+    outcome_ga_weeks=['out_ga_w'],
 )
 
 FIELD_SYNOMYMS = {}
