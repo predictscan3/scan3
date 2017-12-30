@@ -213,7 +213,7 @@ if __name__ == "__main__":
         with open(fname, "wb") as f:
             pickle.dump(center_df, f)
 
-        center_df.to_csv(fname_csv)
+        center_df.to_csv(fname_csv, index_label="idx")
 
     # Concatenate everything into one big file and save
     final = pd.concat(center_dfs)
@@ -224,5 +224,5 @@ if __name__ == "__main__":
     with open(fname, "wb") as f:
         pickle.dump(final, f)
 
-    final.to_csv(fname_csv)
+    final.to_csv(fname_csv, index_label="idx")
 

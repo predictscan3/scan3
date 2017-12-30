@@ -3,6 +3,7 @@ import numpy as np
 from datetime import datetime
 
 from scan3 import settings
+from scan3.server.data_import.enrich import convert_dates
 
 
 def join_center_scans(dfs_by_scan=None, sources=None):
@@ -184,7 +185,10 @@ def join_center_scans(dfs_by_scan=None, sources=None):
         dupes = dupes[dupes > 1]
 
         print("Dropping {0} rows from {1} as they have duplicate scan ids".format(len(dupes), name))
-        # TODO Need to sort by the scan date here, so that the duplicate dropping works properly
+        # Sort by the scan date so that we just keep the most recent one
+        # TODO This needs a bit of extra logic for the third trimester scan (if the baby is dead in the last scan
+        # TODO then we need the one before)
+        df.sort_values(by=["date_of_exam"], inplace=True)
         df_new = df.drop_duplicates(subset=["idx"], keep="last")
 
         return df_new
@@ -234,24 +238,45 @@ def join_center_scans(dfs_by_scan=None, sources=None):
     scan3_rename = reindex(scan3_rename)
 
     # Join together
-    scan1_2 = scan1_rename.join(scan2_rename, how="inner", lsuffix="_xs2", rsuffix="_xs1")
+    scan1_2 = scan1_rename.join(scan2_rename, how="inner", lsuffix="_xs1", rsuffix="_xs2")
     # TODO Need to make sure we don't lose rows that don't have scan3 info
-    scan1_2_3 = scan1_2.join(scan3_rename, how="inner", rsuffix="_xs3")
+    joined = scan1_2.join(scan3_rename, how="inner", rsuffix="_xs3")
 
-    print("Scan final size: {0}".format(len(scan1_2_3)))
+    print("Scan final size: {0}".format(len(joined)))
 
     # Drop any extra cols
-    for scan in [scan1_2_3]:
+    # TODO This isn't working right, all the extra fields are still in the dataframe
+    for scan in [joined]:
         drops = []
+        rename_debugs = {}
         for suffix in ["_xs1", "_xs2", "_xs3"]:
             for k in scan.keys():
                 if k.endswith(suffix):
-                    drops.append(k)
+                    field_name = k.split(suffix)[0]
+                    if field_name in ["filename"]:  # settings.FINAL_DEBUG_FIELDS:
+                        rename_debugs[k] = "debug_{0}".format(k)
+                    else:
+                        drops.append(k)
         if len(drops) > 0:
             scan.drop(axis=1, labels=drops, inplace=True)
+        if len(rename_debugs) > 0:
+            scan.rename(columns=rename_debugs, inplace=True)
 
     # Drop/Rename final cols
-    scan1_2_3 = rename_debug_fields(scan1_2_3)
-    scan1_2_3.drop(axis=1, labels=settings.FINAL_DROP_FIELDS, inplace=True)
+    # scan1_2_3 = rename_debug_fields(scan1_2_3)
+    joined.drop(axis=1, labels=settings.FINAL_DROP_FIELDS, inplace=True)
 
-    return scan1_2_3
+    # Drop rows where the data appears to be incorrect
+    # Convert dates
+    joined = convert_dates(joined)
+
+    bad_scan_dates = joined[(joined.t2_date_of_exam < joined.t1_date_of_exam) |
+                            (joined.t3_date_of_exam < joined.t1_date_of_exam)]
+    # TODO Actually, I think some of these are just where there is a missing scan, and my joining logic doesn't work
+    # TODO properly.
+
+    print("Found {0} rows where the scan dates must be wrong, eg scan3 < scan1, or scan2 < scan1".format(len(bad_scan_dates)))
+    print("\n".join(sorted(bad_scan_dates.index.tolist())))
+    final = joined.drop(bad_scan_dates.index, axis=0)
+
+    return final

@@ -5,3 +5,5 @@ from scan3.conf import *
 
 # Here is an example of overwriting a setting
 TEST_NAME = "this is overwritten"
+
+DATA_ROOT = r"c:\temp"
