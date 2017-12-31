@@ -1,6 +1,6 @@
 import pandas as pd
 from scan3 import settings
-from os.path import join, exists, splitext
+from os.path import join, exists, splitext, dirname
 from os import makedirs
 try:
     import cPickle as pickle
@@ -88,8 +88,8 @@ def convert_file_type(center_root=None, filename=None, force=False):
     :param filename:
     :return:
     """
-    orig_fname = join(settings.DATA_ROOT, center_root, filename)
-    cache_fname = join(settings.DATA_ROOT, center_root, "{0}.p".format(splitext(filename)[0]))
+    orig_fname = join(settings.DATA_IN_ROOT, center_root, filename)
+    cache_fname = join(settings.DATA_OUT_ROOT, center_root, "{0}.p".format(splitext(filename)[0]))
 
     if not exists(orig_fname):
         raise Exception("File not found: {0}".format(orig_fname))
@@ -117,6 +117,8 @@ def xlxs2dataframe(orig_fname=None, cache_fname=None):
 
     print("Found {0} lines".format(len(orig)))
 
+    if not exists(dirname(cache_fname)):
+        makedirs(dirname(cache_fname))
     print("Saving to {0}".format(cache_fname))
     with open(cache_fname, "wb") as f:
         pickle.dump(orig, f)
@@ -152,6 +154,11 @@ if __name__ == "__main__":
     """
     Main function just here to make things easier when testing etc
     """
+    print("Project root is: {0}".format(settings.PROJECT_ROOT))
+    print("Data source is: {0}".format(settings.DATA_IN_ROOT))
+    print("Data target is: {0}".format(settings.DATA_OUT_ROOT))
+
+    CENTER_FILTER = {"Centre1", "Centre2"}  # to help with debugging
 
     files = dict(
         Centre1=[("scan1", "PREST1_v2.xlsx", ),
@@ -170,20 +177,21 @@ if __name__ == "__main__":
     # )
 
     force = False
-    outroot = join(settings.DATA_ROOT, "data_staging")
+    outroot = join(settings.DATA_OUT_ROOT, "data_staging")
     if not exists(outroot):
         makedirs(outroot)
 
     # Load all files and tidy up the field names
     tidy_files = OrderedDict()
     for center, sfiles in iter(files.items()):
-        cfiles = OrderedDict()
-        for scan, file in sfiles:
-            df = convert_file_type(center, file, force=force)
-            df = tidy_field_names(df)
-            df = drop_cols(scan, df)
-            cfiles[scan] = df
-        tidy_files[center] = cfiles
+        if center in CENTER_FILTER:
+            cfiles = OrderedDict()
+            for scan, file in sfiles:
+                df = convert_file_type(center, file, force=force)
+                df = tidy_field_names(df)
+                df = drop_cols(scan, df)
+                cfiles[scan] = df
+            tidy_files[center] = cfiles
 
     # Check whether we have any important fields missing, at the moment center1 is our default
     # base_center = "Centre1"
@@ -203,7 +211,7 @@ if __name__ == "__main__":
     # Join the center files into one, indexed on baby_id (composite of parent_id and EDD)
     center_dfs = []
     for center, cfiles in iter(tidy_files.items()):
-        center_df = join_center_scans(cfiles, files)
+        center_df = join_center_scans(center, cfiles, files)
         center_dfs.append(center_df)
 
         fname = join(outroot, "{0}_by_baby.p".format(center))
@@ -217,10 +225,10 @@ if __name__ == "__main__":
 
     # Concatenate everything into one big file and save
     final = pd.concat(center_dfs)
-    fname = join(outroot, "all_by_baby.p")
-    fname_csv = join(outroot, "all_by_baby.csv")
+    fname = join(outroot, "all_by_baby_v{0}.p".format(settings.JOINER_VERSION))
+    fname_csv = join(outroot, "all_by_baby_v{0}.csv".format(settings.JOINER_VERSION))
 
-    print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(files.keys()), fname))
+    print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(tidy_files.keys()), fname))
     with open(fname, "wb") as f:
         pickle.dump(final, f)
 

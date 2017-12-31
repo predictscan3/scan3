@@ -1,7 +1,12 @@
-from environment import *
+from environment import PROJECT_ROOT
 
-TEST_NAME = "test name"
-TEST_PROJECT = "test project"
+from os.path import join
+
+
+JOINER_VERSION = 2
+
+DATA_IN_ROOT = join(PROJECT_ROOT, "data")
+DATA_OUT_ROOT = DATA_IN_ROOT
 
 PARENT_FIELDS = ['alcohol', 'cigarettes', 'conception',  'edd_lmp', 'edd_us', 'edd',
                  'episode_lmp', 'ethnic_group', 'ethnic_group2', 'height_cm',
@@ -57,20 +62,20 @@ CENTER2_DROP_FIELDS = ['race', 'race_2', 'smoking', 'us_gestation_wks', 'chronic
                        'other_medical_historyixxx', 'p_v', 'pad_t', 'papp_a_mom', 'pre__weight', 'sle',
                        'smoking', 'ua', '36_weight', 'apad_2', 'aps', 'height']
 
-DROP_FIELDS = ["id_sort", "case_no", 'us_gestation_weeks1', 'admission_scbu', 'apgar_10min', 'apgar_5min',
+DROP_FIELDS = ["id_sort", "case_no", 'admission_scbu', 'apgar_10min', 'apgar_5min',
                'outcome_ga_days', 'outcome_ga_weeks', 'postnatal_diagnosis', 'sex_of_child',
                'bw', 'chromosomes_baby', 'cord_ph_artery', 'cord_ph_vein', 'delivery', 'discharged_on',
                'karyotype_baby',
                'ad1_wb2', 'ad2_wb2',
-               'days1', 'gestation_days',
                'maternal_age_at_exam',
+               # 'us_gestation_weeks1', 'days1', 'gestation_days',  # Need these to "guess" an EDD to generate a baby id when there is no scan1
                ] \
               + MIGHT_NEED_FIELDS \
               + CENTER2_DROP_FIELDS
 
 # Only rename/drop these at the final stage, they're used for various things during processing
 FINAL_DEBUG_FIELDS = ['patients_id', 'baby_id', 'center', 'comments', 'filename']
-FINAL_DROP_FIELDS = ['missing_scan_fields']
+FINAL_DROP_FIELDS = ['missing_scan_fields' 'us_gestation_weeks1', 'days1']
 
 DROP_FIELDS_BY_SCAN = dict(
     scan1=DROP_FIELDS,
@@ -80,7 +85,8 @@ DROP_FIELDS_BY_SCAN = dict(
 
 FIELD_SYNONYMS_BY_BASE = dict(
     pappa_mom=["pappa_a_mom"],
-    us_gestation_weeks1=["us_gestation_wks1"],
+    us_gestation_weeks1=["us_gestation_wks1", "us_gestation_wks"],
+    days1=["gestation_days"],
     edd_lmp=['edd'],
     edd_us=['edd_by_us'],
     bpd3=["bpd"],

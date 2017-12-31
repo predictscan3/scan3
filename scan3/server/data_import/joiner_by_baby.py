@@ -1,16 +1,27 @@
 from collections import defaultdict
 import numpy as np
-from datetime import datetime
+import pandas as pd
+from datetime import datetime, timedelta
+from os.path import exists, join
+from os import makedirs
 
 from scan3 import settings
-from scan3.server.data_import.enrich import convert_dates
+from scan3.server.data_import.enrich import convert_dates, to_datetime, add_scan_calcd_fields
 
 
-def join_center_scans(dfs_by_scan=None, sources=None):
+def dump_debug_df(name=None, df=None):
+    outroot = join(settings.DATA_OUT_ROOT, "data_debug")
+    if not exists(outroot):
+        makedirs(outroot)
+    df.to_csv(join(outroot, "{0}.csv".format(name)))
+
+
+def join_center_scans(center=None, dfs_by_scan=None, sources=None):
     """
     Given the raw data by scan for a single center, join them together keyed on baby_id (which will be generated)
     The final file will have one row per baby, with scan fields by trimester
     TODO Refactor the ID generation functions
+    :param center:
     :param dfs_by_scan:
     :param sources:
     :return:
@@ -41,10 +52,16 @@ def join_center_scans(dfs_by_scan=None, sources=None):
     scan1.loc[good_edd_us, "edd"] = scan1.edd_us[good_edd_us]
     scan1.loc[good_edd_us == False, "edd"] = scan1.edd_lmp[good_edd_us == False]
 
+    scan1 = add_scan_calcd_fields(scan1)
+
     # TODO Drop fields where we still don't have an EDD, we can't process them
 
     scan1["baby_id"] = scan1["patients_id"].astype(str) + "_" + scan1["edd"]
 
+    # Conver the EDD to a date to make things easier
+    scan1["edd"] = to_datetime(scan1.edd)
+
+    # Store the mothers age by scan1 date, so that we can verify it when matching scans
     # Store EDD by parent, then for a given scan date, just find the min EDD that is > the scan date, to generate the
     # baby id
     print("Store EDD by parent, for baby ID generation")
@@ -62,51 +79,55 @@ def join_center_scans(dfs_by_scan=None, sources=None):
     more_patients = num_scans[num_scans != 1].index
 
     for patients_id in more_patients:
-        edd_by_parent[patients_id] = sorted(scan1.edd[scan1.patients_id == patients_id])
+        edd_by_parent[patients_id] = sorted(set(scan1.edd[scan1.patients_id == patients_id]))
 
-    def get_baby_id(patient_id=None, scan_date=None):
-        dates = edd_by_parent.get(patient_id)
+    def get_baby_id(patient_id=None, scan_date=None, record=None):
+        edd_dates = edd_by_parent.get(patient_id)
 
-        if dates is None:
+        if edd_dates is None:
             return None
 
-        if len(dates) == 1:
-            return "{0}_{1}".format(patient_id, dates[0])
+        if len(edd_dates) == 1:
+            if edd_dates[0] < scan_date:
+                # Is the baby overdue or is this a different baby with missing scan info?
+                if (scan_date - edd_dates[0]).days < 21:  # 3 weeks, just a guess
+                    return "{0}_{1:%Y-%m-%d}".format(patient_id, edd_dates[0])
+                else:
+                    return None
+            else:
+                return "{0}_{1:%Y-%m-%d}".format(patient_id, edd_dates[0])
         else:
             # Filter out any dates less than the scan date, then take the min of what's left (because we already
-            # sorted the dates
-            # TODO Massive hack around dates, sort this out
-            for v in (dates, [scan_date], ):
-                if isinstance(v[0], str):
-                    v = map(lambda x: datetime.strptime(x, "%Y-%m-%d"), v)
-            try:
-                if isinstance(scan_date, datetime):
-                    sd = scan_date.strftime("%Y-%m-%d")
-                else:
-                    sd = scan_date
-                filter_dates = list(filter(lambda x: x >= sd, dates))
-            except Exception as e:
-                print(e)
+            # sorted the dates)
+            filter_dates = list(filter(lambda x: x >= scan_date, edd_dates))
 
             if len(filter_dates) == 0:
                 # Baby must be overdue, so take the most recent EDD
                 # The estimated delivery date could be before the scan date, if the baby is overdue
                 # if this happens, then I think we just take the most recent estimated delivery date,
                 # it must be the right one?
-                baby_edd = dates[-1]
+                if (scan_date - edd_dates[0]).days < 21:  # 3 weeks, just a guess
+                    baby_edd = edd_dates[0]
+                else:
+                    return None
             else:
                 baby_edd = filter_dates[0]
 
-            return "{0}_{1}".format(patient_id, baby_edd)
+            return "{0}_{1:%Y-%m-%d}".format(patient_id, baby_edd)
 
     # Now can process the next scan, need to supplement it with baby ids before we can join the data sets
     def process_subsequent_scan(scan_df=None, name=None):
         baby_ids = []
         missing_patient_ids = []
         for row in scan_df.iterrows():
-            baby_id = get_baby_id(row[1].patients_id, row[1].date_of_exam)
+            baby_id = get_baby_id(row[1].patients_id, row[1].date_of_exam, row[1])
             if baby_id is None:
                 missing_patient_ids.append(row[1].patients_id)
+                # Generate a baby id, so that this data can be used, even if we lack demographic data
+                # Do this by working out a likely EDD from the scan date and gestational age
+                ecd = row[1].date_of_exam - timedelta(weeks=row[1].us_gestation_weeks1, days=row[1].days1)
+                edd = ecd + timedelta(weeks=40)
+                baby_id = "{0}_{1:%Y-%m-%d}_G".format(row[1].patients_id, edd)
             baby_ids.append(baby_id)
 
         scan_df["baby_id"] = baby_ids
@@ -114,25 +135,23 @@ def join_center_scans(dfs_by_scan=None, sources=None):
         print("Found {0} {1} patients with no match in scan1".format(len(missing_patient_ids), name))
 
         # Need to drop those rows with missing baby ids, can't do anything with them
-        missing = scan_df.baby_id.isnull()
-        print("Dropping {0} rows from {1}".format(len(missing[missing == True]), name))
-        scan_df2 = scan_df.drop(scan_df[missing].index)
+        # missing = scan_df.baby_id.isnull()
+        # print("Dropping {0} rows from {1}".format(len(missing[missing == True]), name))
+        # scan_df2 = scan_df.drop(scan_df[missing].index)
 
-        # Turn the scan date field into a date, makes things more explicit?
-        # Also the EDD column
-        scan_df2["date_of_exam"] = scan_df.date_of_exam.map(lambda x: x if isinstance(x, datetime) else datetime.strptime(x, "%Y-%m-%d"))
-        # scan_df2["edd"] = scan_df.edd.map(lambda x: datetime.strptime(x, "%Y-%m-%d"))
-        return scan_df2, missing_patient_ids
+        return scan_df, missing_patient_ids
 
     if True:
         print("Find baby id for scan2")
-        scan2, scan2_missing_patients = process_subsequent_scan(dfs_by_scan["scan2"], "scan2")
+        scan2 = add_scan_calcd_fields(dfs_by_scan["scan2"])
+        scan2, scan2_missing_patients = process_subsequent_scan(scan2, "scan2")
         missing_patient_info["scan2"] = scan2_missing_patients
 
     if True:
         print("Find baby id for scan3")
+        scan3 = add_scan_calcd_fields(dfs_by_scan["scan3"])
         # TODO Check that we don't drop rows where there is no scan3 info, as that would imply the baby was fine
-        scan3, scan3_missing_patients = process_subsequent_scan(dfs_by_scan["scan3"], "scan3")
+        scan3, scan3_missing_patients = process_subsequent_scan(scan3, "scan3")
         missing_patient_info["scan3"] = scan3_missing_patients
 
     # Then, for each baby, we can separate out the different data:
@@ -173,23 +192,55 @@ def join_center_scans(dfs_by_scan=None, sources=None):
             print("\tChecking {0}.{1}".format(name, f))
             df["missing_scan_fields"] += df[f].map(is_bad)
 
-        bad = (df.missing_scan_fields == (len(pure_scan_fields) - 1))
+        num_scan_fields = len(pure_scan_fields) - 1
 
-        print("Dropping {0} rows from {1} as they have no scan fields".format(len(bad[bad == True]), name))
+        # Find duplicate scans, then drop any of them that have no scan fields
+        print("Determining which {0} rows to drop, keeping the one with the most scan data".format(name))
+        bad_idx = []
+        for baby_id, dupes in df.groupby("baby_id"):
+            if len(dupes) > 1:
+                # Keep the one with the most scan fields
+                keep_dupes = dupes[dupes.missing_scan_fields == min(dupes.missing_scan_fields)]
 
-        df.drop(df.index[bad == True], axis=0, inplace=True)
+                if len(keep_dupes) > 1:
+                    # More than one eligible, so just take the most recent one
+                    keep_dupe_idx = keep_dupes[keep_dupes.date_of_exam == max(keep_dupes.date_of_exam)]
 
-        # Start setting up the new index, and check for duplicates again
-        df["idx"] = df["baby_id"]
-        dupes = df.groupby("idx").size()
-        dupes = dupes[dupes > 1]
+                    if len(keep_dupe_idx) > 1:
+                        # Multiple scans on the same day, with the same number of scan fields present, unlikely
+                        # Spot checking a few shows that they often have different fields present, so we should
+                        # merge the two
+                        # TODO Check with Basky about merging rows, can we take the average when a value is the same
+                        # in both or should be just take the last one?
+                        print("Multiple {0} for {1} on {2:%d %b %Y} ({3})".format(name,
+                                                                                  baby_id,
+                                                                                  keep_dupe_idx.iloc[0].date_of_exam,
+                                                                                  len(keep_dupe_idx)))
+                    keep_dupe_idx = keep_dupe_idx.index[0]
+                else:
+                    keep_dupe_idx = keep_dupes.index[0]
 
-        print("Dropping {0} rows from {1} as they have duplicate scan ids".format(len(dupes), name))
+                drop_dupe_idx = set(dupes.index)
+                drop_dupe_idx.remove(keep_dupe_idx)
+                bad_idx += list(drop_dupe_idx)
+
+        print("Dropping {0} duplicate rows from {1} (keeping records with most scan data)".format(len(bad_idx), name))
+        dump_debug_df("{0}_dupes_least_scan_fields".format(name), df[df.index.isin(bad_idx)])
+
+        df_no_dupes = df.drop(bad_idx, axis=0)
+
+        # Start setting up the new index, and check for duplicates again (there shouldn't be any)
+        df_no_dupes["idx"] = df_no_dupes["baby_id"]
+
         # Sort by the scan date so that we just keep the most recent one
         # TODO This needs a bit of extra logic for the third trimester scan (if the baby is dead in the last scan
         # TODO then we need the one before)
-        df.sort_values(by=["date_of_exam"], inplace=True)
-        df_new = df.drop_duplicates(subset=["idx"], keep="last")
+        df_no_dupes.sort_values(by=["baby_id", "date_of_exam"], inplace=True)
+        df_new = df_no_dupes.drop_duplicates(subset=["idx"], keep="last")
+
+        if len(df_new) < len(df_no_dupes):
+            print("Dropped {0} more rows from {1} as they were duplicated".format(len(df_no_dupes) - len(df_new), name))
+            dump_debug_df("{0}_dupe_baby_id".format(name), df_no_dupes[df_no_dupes.index.isin(df_new.index) == False])
 
         return df_new
 
@@ -238,9 +289,9 @@ def join_center_scans(dfs_by_scan=None, sources=None):
     scan3_rename = reindex(scan3_rename)
 
     # Join together
-    scan1_2 = scan1_rename.join(scan2_rename, how="inner", lsuffix="_xs1", rsuffix="_xs2")
+    scan1_2 = scan1_rename.join(scan2_rename, how="outer", lsuffix="_xs1", rsuffix="_xs2")
     # TODO Need to make sure we don't lose rows that don't have scan3 info
-    joined = scan1_2.join(scan3_rename, how="inner", rsuffix="_xs3")
+    joined = scan1_2.join(scan3_rename, how="outer", rsuffix="_xs3")
 
     print("Scan final size: {0}".format(len(joined)))
 
@@ -276,7 +327,8 @@ def join_center_scans(dfs_by_scan=None, sources=None):
     # TODO properly.
 
     print("Found {0} rows where the scan dates must be wrong, eg scan3 < scan1, or scan2 < scan1".format(len(bad_scan_dates)))
-    print("\n".join(sorted(bad_scan_dates.index.tolist())))
+    dump_debug_df("{0}_bad_scan_dates".format(center), bad_scan_dates)
+
     final = joined.drop(bad_scan_dates.index, axis=0)
 
     return final
