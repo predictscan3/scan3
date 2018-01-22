@@ -3,7 +3,7 @@ from environment import PROJECT_ROOT
 from os.path import join
 
 
-JOINER_VERSION = 2
+JOINER_VERSION = 3
 
 DATA_IN_ROOT = join(PROJECT_ROOT, "data")
 DATA_OUT_ROOT = DATA_IN_ROOT
@@ -19,6 +19,8 @@ PARENT_FIELDS = ['alcohol', 'cigarettes', 'conception',  'edd_lmp', 'edd_us', 'e
 # TODO: Add some calculated fields, especially gestational age, express in days?
 
 COMMON_FIELDS = ['patients_id', 'date_of_exam']
+
+OUTCOME_FIELDS = ['outcome', 'outcome_date', 'outcome_died_on']
 
 TRIM1_SCAN_FIELDS = ['date_of_exam',
                      'msb_date', 'msb_manufacturer', 'msb_plgf_pgml',
@@ -37,15 +39,19 @@ TRIM3_SCAN_FIELDS = ['date_of_exam',
                      'fh4', 'fetus_mid_cerebral_a_pi', 'fetus_umbilical_a_pi',
                      ]
 
+CHECK_FIELDS_BY_SCAN_FILE = dict(
+    scan1=TRIM1_SCAN_FIELDS,
+    scan2=TRIM2_SCAN_FIELDS,
+    scan3=TRIM3_SCAN_FIELDS + OUTCOME_FIELDS
+)
+
 FIELDS_BY_SCAN_FILE = dict(
     scan1=TRIM1_SCAN_FIELDS,
     scan2=TRIM2_SCAN_FIELDS,
     scan3=TRIM3_SCAN_FIELDS
 )
 
-OUTCOME_FIELDS = ['outcome', 'outcome_date', 'outcome_died_on']
-
-DEBUG_FIELDS = ["center", "filename", 'comments', 'scanfile_idx']
+DEBUG_FIELDS = ["center", 'comments', 'scanfile_idx']
 
 # These have useful information but we're not using them at the moment
 MIGHT_NEED_FIELDS = ['iud_16_23w', 'iud_24_36w', 'iud_gte_37w', 'iud_lt_15w', 'bhcg_mom', 'pappa_mom',
@@ -68,14 +74,15 @@ DROP_FIELDS = ["id_sort", "case_no", 'admission_scbu', 'apgar_10min', 'apgar_5mi
                'karyotype_baby',
                'ad1_wb2', 'ad2_wb2',
                'maternal_age_at_exam',
+               'fetus_mid_cerebral_a_pi2',
                # 'us_gestation_weeks1', 'days1', 'gestation_days',  # Need these to "guess" an EDD to generate a baby id when there is no scan1
                ] \
               + MIGHT_NEED_FIELDS \
               + CENTER2_DROP_FIELDS
 
 # Only rename/drop these at the final stage, they're used for various things during processing
-FINAL_DEBUG_FIELDS = ['patients_id', 'baby_id', 'center', 'comments', 'filename']
-FINAL_DROP_FIELDS = ['missing_scan_fields' 'us_gestation_weeks1', 'days1']
+FINAL_DEBUG_FIELDS = ['comments', 't1_mat_age_at_exam', 't2_mat_age_at_exam', 't3_mat_age_at_exam', 'patients_id']
+FINAL_DROP_FIELDS = ['missing_scan_fields', 'us_gestation_weeks1', 'days1', 'filename', 'baby_id', 'center']
 
 DROP_FIELDS_BY_SCAN = dict(
     scan1=DROP_FIELDS,

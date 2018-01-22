@@ -12,6 +12,7 @@ from re import sub
 
 # from scan3.server.data_import.joiner import join_center_scans
 from scan3.server.data_import.joiner_by_baby import join_center_scans
+from scan3.server.data_import.enrich import add_calcd_fields, apply_filters
 
 
 def convert_field_name(name):
@@ -150,15 +151,7 @@ def inspect_scan_fields(cfiles=None):
     print(scan2_cols - scan1_cols - scan3_cols)
 
 
-if __name__ == "__main__":
-    """
-    Main function just here to make things easier when testing etc
-    """
-    print("Project root is: {0}".format(settings.PROJECT_ROOT))
-    print("Data source is: {0}".format(settings.DATA_IN_ROOT))
-    print("Data target is: {0}".format(settings.DATA_OUT_ROOT))
-
-    CENTER_FILTER = {"Centre1", "Centre2"}  # to help with debugging
+def clean_and_join(centers=None, fname_p=None, fname_csv=None):
 
     files = dict(
         Centre1=[("scan1", "PREST1_v2.xlsx", ),
@@ -177,14 +170,11 @@ if __name__ == "__main__":
     # )
 
     force = False
-    outroot = join(settings.DATA_OUT_ROOT, "data_staging")
-    if not exists(outroot):
-        makedirs(outroot)
 
     # Load all files and tidy up the field names
     tidy_files = OrderedDict()
     for center, sfiles in iter(files.items()):
-        if center in CENTER_FILTER:
+        if center in centers:
             cfiles = OrderedDict()
             for scan, file in sfiles:
                 df = convert_file_type(center, file, force=force)
@@ -214,23 +204,61 @@ if __name__ == "__main__":
         center_df = join_center_scans(center, cfiles, files)
         center_dfs.append(center_df)
 
-        fname = join(outroot, "{0}_by_baby.p".format(center))
-        fname_csv = join(outroot, "{0}_by_baby.csv".format(center))
+        c_fname_p = join(outroot, "{0}_by_baby.p".format(center))
+        c_fname_csv = join(outroot, "{0}_by_baby.csv".format(center))
 
-        print("Writing {0} rows for {1} to {2}".format(len(center_df), center, fname))
-        with open(fname, "wb") as f:
-            pickle.dump(center_df, f)
-
-        center_df.to_csv(fname_csv, index_label="idx")
+        print("Writing {0} rows for {1} to {2}".format(len(center_df), center, c_fname_csv))
+        center_df.to_pickle(c_fname_p)
+        center_df.to_csv(c_fname_csv, index_label="idx")
 
     # Concatenate everything into one big file and save
     final = pd.concat(center_dfs)
-    fname = join(outroot, "all_by_baby_v{0}.p".format(settings.JOINER_VERSION))
-    fname_csv = join(outroot, "all_by_baby_v{0}.csv".format(settings.JOINER_VERSION))
 
-    print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(tidy_files.keys()), fname))
-    with open(fname, "wb") as f:
-        pickle.dump(final, f)
-
+    print("Writing {0} rows for {1} to {2}".format(len(final), ", ".join(tidy_files.keys()), fname_p))
+    final.to_pickle(fname_p)
     final.to_csv(fname_csv, index_label="idx")
 
+    return final
+
+
+def enrich(df=None):
+    print("Enriching data")
+    df = add_calcd_fields(df)
+    df = apply_filters(df)
+    return df
+
+
+if __name__ == "__main__":
+    """
+    Main function just here to make things easier when testing etc
+    """
+    print("Project root is: {0}".format(settings.PROJECT_ROOT))
+    print("Data source is: {0}".format(settings.DATA_IN_ROOT))
+    print("Data target is: {0}".format(settings.DATA_OUT_ROOT))
+
+    CENTER_FILTER = {"Centre1", "Centre2"}  # to help with debugging
+    # CENTER_FILTER = {"Centre1"}
+
+    JOIN = True
+    ENRICH = True
+
+    outroot = join(settings.DATA_OUT_ROOT, "data_staging")
+    if not exists(outroot):
+        makedirs(outroot)
+
+    joined_fname_p = join(outroot, "all_by_baby_v{0}.p".format(settings.JOINER_VERSION))
+    joined_fname_csv = join(outroot, "all_by_baby_v{0}.csv".format(settings.JOINER_VERSION))
+
+    enriched_fname_p = join(outroot, "all_by_baby_enriched_v{0}.p".format(settings.JOINER_VERSION))
+    enriched_fname_csv = join(outroot, "all_by_baby_enriched_v{0}.csv".format(settings.JOINER_VERSION))
+
+    if JOIN:
+        joined = clean_and_join(CENTER_FILTER, joined_fname_p, joined_fname_csv)
+    else:
+        joined = pd.read_pickle(joined_fname_p)
+
+    if ENRICH:
+        enriched = enrich(joined)
+        print("Writing enriched data to {0}".format(enriched_fname_csv))
+        enriched.to_csv(enriched_fname_csv, index_label="idx")
+        enriched.to_pickle(enriched_fname_p)

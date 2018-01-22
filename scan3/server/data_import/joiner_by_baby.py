@@ -52,7 +52,7 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
     scan1.loc[good_edd_us, "edd"] = scan1.edd_us[good_edd_us]
     scan1.loc[good_edd_us == False, "edd"] = scan1.edd_lmp[good_edd_us == False]
 
-    scan1 = add_scan_calcd_fields(scan1)
+    scan1 = add_scan_calcd_fields("t1", scan1)
 
     # TODO Drop fields where we still don't have an EDD, we can't process them
 
@@ -134,24 +134,19 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
 
         print("Found {0} {1} patients with no match in scan1".format(len(missing_patient_ids), name))
 
-        # Need to drop those rows with missing baby ids, can't do anything with them
-        # missing = scan_df.baby_id.isnull()
-        # print("Dropping {0} rows from {1}".format(len(missing[missing == True]), name))
-        # scan_df2 = scan_df.drop(scan_df[missing].index)
-
         return scan_df, missing_patient_ids
 
     if True:
         print("Find baby id for scan2")
-        scan2 = add_scan_calcd_fields(dfs_by_scan["scan2"])
-        scan2, scan2_missing_patients = process_subsequent_scan(scan2, "scan2")
+        scan2 = add_scan_calcd_fields("t2", dfs_by_scan["scan2"])
+        scan2, scan2_missing_patients = process_subsequent_scan(scan2, center + ".scan2")
         missing_patient_info["scan2"] = scan2_missing_patients
 
     if True:
         print("Find baby id for scan3")
-        scan3 = add_scan_calcd_fields(dfs_by_scan["scan3"])
+        scan3 = add_scan_calcd_fields("t3", dfs_by_scan["scan3"])
         # TODO Check that we don't drop rows where there is no scan3 info, as that would imply the baby was fine
-        scan3, scan3_missing_patients = process_subsequent_scan(scan3, "scan3")
+        scan3, scan3_missing_patients = process_subsequent_scan(scan3, center + ".scan3")
         missing_patient_info["scan3"] = scan3_missing_patients
 
     # Then, for each baby, we can separate out the different data:
@@ -168,7 +163,7 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
     # Also, for now just take the last scan date if there are duplicates.  Need to do some work to pick up scan2
     # if the baby is dead in scan3
 
-    def drop_bad_rows(name=None, df=None):
+    def drop_bad_rows(center=None, scan=None, df=None):
         """
         There are lots of duplicated rows, but only one has actual scan data, they both have other data though
         Try and identify and drop these useless rows, then check if we still have duplicates before reindexing.
@@ -176,7 +171,8 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
         """
 
         # Identify rows without any scan data
-        pure_scan_fields = list(set(settings.FIELDS_BY_SCAN_FILE[name]) - {"date_of_exam"})
+        name = "{0}.{1}".format(center, scan)
+        pure_scan_fields = list(set(settings.CHECK_FIELDS_BY_SCAN_FILE[scan]) - {"date_of_exam"})
         df["missing_scan_fields"] = 0
 
         def is_bad(x):
@@ -184,18 +180,21 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
                 return 1
             elif isinstance(x, str):
                 return 1 if len(x) == 0 else 0
+            elif isinstance(x, datetime):
+                return 1 if np.isnat(x) else 0
             else:
                 return 1 if np.isnan(x) else 0
 
         for f in set(pure_scan_fields).intersection(set(df.keys())):
-            # TODO This needs tidying up, bit slow to check the type....
-            print("\tChecking {0}.{1}".format(name, f))
-            df["missing_scan_fields"] += df[f].map(is_bad)
-
-        num_scan_fields = len(pure_scan_fields) - 1
+            try:
+                # TODO This needs tidying up, bit slow to check the type....
+                print("\tChecking {0}.{1}.{2}".format(center, scan, f))
+                df["missing_scan_fields"] += df[f].map(is_bad)
+            except Exception as e:
+                print(str(e))
 
         # Find duplicate scans, then drop any of them that have no scan fields
-        print("Determining which {0} rows to drop, keeping the one with the most scan data".format(name))
+        print("Determining which {0} records to drop, keeping the one with the most scan data".format(name))
         bad_idx = []
         for baby_id, dupes in df.groupby("baby_id"):
             if len(dupes) > 1:
@@ -212,10 +211,11 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
                         # merge the two
                         # TODO Check with Basky about merging rows, can we take the average when a value is the same
                         # in both or should be just take the last one?
-                        print("Multiple {0} for {1} on {2:%d %b %Y} ({3})".format(name,
-                                                                                  baby_id,
-                                                                                  keep_dupe_idx.iloc[0].date_of_exam,
-                                                                                  len(keep_dupe_idx)))
+                        # print("Multiple {0} for {1} on {2:%d %b %Y} ({3})".format(name,
+                        #                                                           baby_id,
+                        #                                                           keep_dupe_idx.iloc[0].date_of_exam,
+                        #                                                           len(keep_dupe_idx)))
+                        pass
                     keep_dupe_idx = keep_dupe_idx.index[0]
                 else:
                     keep_dupe_idx = keep_dupes.index[0]
@@ -272,9 +272,9 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
         return df_new
 
     print("Reindexing scans")
-    scan1_new = drop_bad_rows("scan1", scan1)
-    scan2_new = drop_bad_rows("scan2", scan2)
-    scan3_new = drop_bad_rows("scan3", scan3)
+    scan1_new = drop_bad_rows(center, "scan1", scan1)
+    scan2_new = drop_bad_rows(center, "scan2", scan2)
+    scan3_new = drop_bad_rows(center, "scan3", scan3)
 
     print("Renaming scan fields")
     scan1_rename = rename_parent_fields("scan1", rename_scan_fields("scan1", scan1_new))
@@ -290,32 +290,50 @@ def join_center_scans(center=None, dfs_by_scan=None, sources=None):
 
     # Join together
     scan1_2 = scan1_rename.join(scan2_rename, how="outer", lsuffix="_xs1", rsuffix="_xs2")
-    # TODO Need to make sure we don't lose rows that don't have scan3 info
     joined = scan1_2.join(scan3_rename, how="outer", rsuffix="_xs3")
 
-    print("Scan final size: {0}".format(len(joined)))
+    # Sort out common fields
+    joined["dem_center"] = center
+
+    # Because we've done an outer join, need to make sure common fields are properly dealt with, eg dob
+    def filter_ends(endswith, cols):
+        return list(filter(lambda x: x.endswith(endswith), cols))
+
+    def filter_starts(startswith, cols):
+        return list(filter(lambda x: x.startswith(startswith), cols))
+
+    def filter_contains(contains, cols):
+        return list(filter(lambda x: x.find(contains) != -1, cols))
+
+    def unique_date(x):
+        uniq = np.unique(list(filter(lambda x: np.isnat(x) == False, x.values)))
+        return uniq[0] if len(uniq) > 0 else None
+
+    def unique_num(x):
+        uniq = np.unique(list(filter(lambda x: np.isnan(x) == False, x.values)))
+        return uniq[0] if len(uniq) > 0 else None
+
+    joined["dem_dob"] = joined[filter_starts("dem_dob", joined.keys())].apply(unique_date, axis=1)
+    joined["patients_id"] = joined[filter_starts("patients_id", joined.keys())].apply(unique_num, axis=1)
+
+    # We need one maternal age for the model, doesn't matter too much which one
+    joined["dem_mat_age"] = joined[filter_contains("mat_age_at_exam", joined.keys())].apply(unique_num, axis=1)
+
+    print("{0} final size: {1}".format(center, len(joined)))
 
     # Drop any extra cols
-    # TODO This isn't working right, all the extra fields are still in the dataframe
     for scan in [joined]:
         drops = []
-        rename_debugs = {}
         for suffix in ["_xs1", "_xs2", "_xs3"]:
             for k in scan.keys():
                 if k.endswith(suffix):
-                    field_name = k.split(suffix)[0]
-                    if field_name in ["filename"]:  # settings.FINAL_DEBUG_FIELDS:
-                        rename_debugs[k] = "debug_{0}".format(k)
-                    else:
-                        drops.append(k)
+                    drops.append(k)
         if len(drops) > 0:
-            scan.drop(axis=1, labels=drops, inplace=True)
-        if len(rename_debugs) > 0:
-            scan.rename(columns=rename_debugs, inplace=True)
+            scan.drop(axis=1, labels=drops, errors="ignore", inplace=True)
 
     # Drop/Rename final cols
-    # scan1_2_3 = rename_debug_fields(scan1_2_3)
-    joined.drop(axis=1, labels=settings.FINAL_DROP_FIELDS, inplace=True)
+    joined = rename_debug_fields(joined)
+    joined.drop(axis=1, labels=settings.FINAL_DROP_FIELDS, errors="ignore", inplace=True)
 
     # Drop rows where the data appears to be incorrect
     # Convert dates
