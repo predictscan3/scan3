@@ -12,7 +12,7 @@ Set up git so that you can commit to the main repo, edit the email address to be
 $ git config --global --edit
 
 
-To make it easy to find the data files, create a softlink.  Do this from the same folder that you ran the git command from.
+To make it easy to find the data files, create a soft link.  Do this from the same folder that you ran the git command from.
 
 On my mac this looks like:
 

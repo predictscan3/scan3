@@ -4,6 +4,7 @@ from os.path import join
 
 
 JOINER_VERSION = 3
+NORMER_VERSION = 1
 
 DATA_IN_ROOT = join(PROJECT_ROOT, "data")
 DATA_OUT_ROOT = DATA_IN_ROOT
@@ -14,7 +15,7 @@ PARENT_FIELDS = ['alcohol', 'cigarettes', 'conception',  'edd_lmp', 'edd_us', 'e
 
 # TODO: Need to update all this as we will have scan fields per file, and going to be taking the most recent one in each
 # TODO: case (mostly).
-# TODO: Also each scan file doesn't neccessarily have the same scan fields, so will need to list them separately here.
+# TODO: Also each scan file doesn't necessarily have the same scan fields, so will need to list them separately here.
 # TODO: Means some of what I did is redundant, but the finding duplicates part isn't.
 # TODO: Add some calculated fields, especially gestational age, express in days?
 
@@ -61,7 +62,7 @@ MIGHT_NEED_FIELDS = ['iud_16_23w', 'iud_24_36w', 'iud_gte_37w', 'iud_lt_15w', 'b
 SCAN2_DROP_FIELDS = ['bpd3', 'ofd3']
 SCAN3_DROP_FIELDS = ['bpd3', 'ofd3']
 
-# Adding this seperately to make it explicit where these fields are from
+# Adding this separately to make it explicit where these fields are from
 CENTER2_DROP_FIELDS = ['race', 'race_2', 'smoking', 'us_gestation_wks', 'chronic_hypertension', 'diabetes',
                        'diagnosis_details', 'diagnosis_scan', 'efw', 'efw_method', 'gravida', 'placenta',
                        'medical_conditions', 'medications', 'nicu_comments', 'ocd', 'other_complications_outcome',
@@ -75,7 +76,8 @@ DROP_FIELDS = ["id_sort", "case_no", 'admission_scbu', 'apgar_10min', 'apgar_5mi
                'ad1_wb2', 'ad2_wb2',
                'maternal_age_at_exam',
                'fetus_mid_cerebral_a_pi2',
-               # 'us_gestation_weeks1', 'days1', 'gestation_days',  # Need these to "guess" an EDD to generate a baby id when there is no scan1
+               # 'us_gestation_weeks1', 'days1', 'gestation_days',
+               # Need these to "guess" an EDD to generate a baby id when there is no scan1
                ] \
               + MIGHT_NEED_FIELDS \
               + CENTER2_DROP_FIELDS
@@ -104,7 +106,7 @@ FIELD_SYNONYMS_BY_BASE = dict(
     comments=["commentsgeneral_outcome"],
     msb_date=['first_trim_msb_date'],
     fl3=['fl', 'fl_3'],
-    hc3=['hc','hc_3'],
+    hc3=['hc', 'hc_3'],
     l_uterine_a_pi=['l__uterine_artery_pita'],
     r_uterine_a_pi=['r__uterine_artery_pita'],
     fetus_mid_cerebral_a_pi=['mca'],  # r_mca_pi # TODO Special case, need to collapse

@@ -13,6 +13,7 @@ from re import sub
 # from scan3.server.data_import.joiner import join_center_scans
 from scan3.server.data_import.joiner_by_baby import join_center_scans
 from scan3.server.data_import.enrich import add_calcd_fields, apply_filters
+from scan3.server.data_import.normalise import apply_normalisation
 
 
 def convert_field_name(name):
@@ -162,13 +163,6 @@ def clean_and_join(centers=None, fname_p=None, fname_csv=None):
                  ("scan3", "PREST3_v2 Centre2.xlsx", )]
     )
 
-    # files = dict(
-    #     Centre1=[("scan1", "PREST1_v2.xlsx", )
-    #              #, ("scan2", "PREST2_v2.xlsx", ),
-    #              #, ("scan3", "PREST3_v2.xlsx", )
-    #     ]
-    # )
-
     force = False
 
     # Load all files and tidy up the field names
@@ -239,10 +233,12 @@ if __name__ == "__main__":
     CENTER_FILTER = {"Centre1", "Centre2"}  # to help with debugging
     # CENTER_FILTER = {"Centre1"}
 
-    JOIN = True
-    ENRICH = True
+    JOIN = False
+    ENRICH = False
+    NORM = True
 
     outroot = join(settings.DATA_OUT_ROOT, "data_staging")
+
     if not exists(outroot):
         makedirs(outroot)
 
@@ -251,6 +247,11 @@ if __name__ == "__main__":
 
     enriched_fname_p = join(outroot, "all_by_baby_enriched_v{0}.p".format(settings.JOINER_VERSION))
     enriched_fname_csv = join(outroot, "all_by_baby_enriched_v{0}.csv".format(settings.JOINER_VERSION))
+
+    normed_fname_p = join(outroot, "all_by_baby_enriched_v{0}_normed_v{1}.p".format(settings.JOINER_VERSION,
+                                                                                    settings.NORMER_VERSION))
+    normed_fname_csv = join(outroot, "all_by_baby_enriched_v{0}_normed_v{1}.csv".format(settings.JOINER_VERSION,
+                                                                                        settings.NORMER_VERSION))
 
     if JOIN:
         joined = clean_and_join(CENTER_FILTER, joined_fname_p, joined_fname_csv)
@@ -262,3 +263,11 @@ if __name__ == "__main__":
         print("Writing enriched data to {0}".format(enriched_fname_csv))
         enriched.to_csv(enriched_fname_csv, index_label="idx")
         enriched.to_pickle(enriched_fname_p)
+    else:
+        enriched = joined
+
+    if NORM:
+        normed = apply_normalisation(enriched)
+        print("Writing normed data to {0}".format(normed_fname_csv))
+        normed.to_csv(normed_fname_csv, index_label="idx")
+        normed.to_pickle(normed_fname_p)

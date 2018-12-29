@@ -61,6 +61,6 @@ def add_calcd_fields(df=None):
 
 
 def apply_filters(df=None):
-    # drop rows where miscarrige < 24 weeks, or mark them as ok
+    # drop rows where miscarriage < 24 weeks, or mark them as ok
     return df
 
